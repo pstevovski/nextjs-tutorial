@@ -7,19 +7,29 @@ import { z } from "zod";
 // define the schema to be used for validation
 const InvoiceSchema = z.object({
   id: z.string(),
-  customerId: z.string(),
-  amount: z.coerce.number(),
-  status: z.enum(["pending", "paid"]),
+  customerId: z.string({
+    invalid_type_error: "Please select a customer.",
+  }),
+  amount: z.coerce.number().gt(0, {
+    message: "Please enter an amount greater than $0.",
+  }),
+  status: z.enum(["pending", "paid"], {
+    invalid_type_error: "Please select an invoice status.",
+  }),
   date: z.string(),
 });
-type InvoiceSchemaType = z.infer<typeof InvoiceSchema>;
 
 // create an "extension" of the already defined invoice schema that will
 // omit some of the fields that we don't have access to at the moment of submitting the form
 const CreateInvoiceSchema = InvoiceSchema.omit({ id: true, date: true });
 
-export async function createInvoice(formData: FormData) {
-  const { customerId, amount, status } = CreateInvoiceSchema.parse({
+export type FormState = {
+  message?: string | null;
+  errors?: Record<string, string[]> | null;
+};
+
+export async function createInvoice(_prevState: FormState, formData: FormData) {
+  const validatedFields = CreateInvoiceSchema.safeParse({
     customerId: formData.get("customerId"),
     amount: formData.get("amount"),
     status: formData.get("status"),
@@ -27,14 +37,21 @@ export async function createInvoice(formData: FormData) {
 
   // convert the user specified amount into cents
   // to avoid floating point errors and ensure greater accuracy
-  const amountInCents: number = amount * 100;
+  if (!validatedFields.success) {
+    return {
+      errors: validatedFields.error.flatten().fieldErrors,
+      message: "Missing fields. Failed to create a new invoice!",
+    };
+  }
+
+  const amountInCents: number = validatedFields.data.amount * 100;
   const date = new Date().toISOString().split("T")[0];
 
   // insert the data into the database
   try {
     await sql`
       INSERT INTO invoices (customer_id, amount, status, date)
-      VALUES (${customerId}, ${amountInCents}, ${status}, ${date});
+      VALUES (${validatedFields.data.customerId}, ${amountInCents}, ${validatedFields.data.status}, ${date});
     `;
 
     // invalidate the cached invoices data that will trigger refetch
@@ -50,20 +67,31 @@ export async function createInvoice(formData: FormData) {
 }
 
 const EditInvoiceSchema = InvoiceSchema.omit({ id: true, date: true });
-export async function updateInvoice(id: string, formData: FormData) {
-  const { customerId, amount, status } = EditInvoiceSchema.parse({
+export async function updateInvoice(
+  id: string,
+  _prevState: FormState,
+  formData: FormData
+) {
+  const validatedFields = EditInvoiceSchema.safeParse({
     customerId: formData.get("customerId"),
     amount: formData.get("amount"),
     status: formData.get("status"),
   });
 
-  const amountInCents = amount * 100;
+  if (!validatedFields.success) {
+    return {
+      errors: validatedFields.error.flatten().fieldErrors,
+      message: "Missing fields. Failed to update targeted invoice!",
+    };
+  }
+
+  const amountInCents = validatedFields.data.amount * 100;
   const updatedDate = new Date().toISOString().split("T")[0];
 
   try {
     await sql`
       UPDATE invoices 
-      SET customer_id = ${customerId}, amount = ${amountInCents}, status = ${status}, date = ${updatedDate}
+      SET customer_id = ${validatedFields.data.customerId}, amount = ${amountInCents}, status = ${status}, date = ${updatedDate}
       WHERE id = ${id} 
     `;
 
