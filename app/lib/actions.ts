@@ -31,25 +31,61 @@ export async function createInvoice(formData: FormData) {
   const date = new Date().toISOString().split("T")[0];
 
   // insert the data into the database
-  // try {
-  await sql`
+  try {
+    await sql`
       INSERT INTO invoices (customer_id, amount, status, date)
       VALUES (${customerId}, ${amountInCents}, ${status}, ${date});
     `;
 
-  // invalidate the cached invoices data that will trigger refetch
-  revalidatePath("/dashboard/invoices");
+    // invalidate the cached invoices data that will trigger refetch
+    revalidatePath("/dashboard/invoices");
 
-  // redirect the user back to the invoices page
-  redirect("/dashboard/invoices");
-  // } catch (error) {
-  //   throw new Error("Failed creating new invoice!");
-  // }
+    // redirect the user back to the invoices page
+    redirect("/dashboard/invoices");
+  } catch (error) {
+    return {
+      error: "Failed creating a new invoice",
+    };
+  }
+}
+
+const EditInvoiceSchema = InvoiceSchema.omit({ id: true, date: true });
+export async function updateInvoice(id: string, formData: FormData) {
+  const { customerId, amount, status } = EditInvoiceSchema.parse({
+    customerId: formData.get("customerId"),
+    amount: formData.get("amount"),
+    status: formData.get("status"),
+  });
+
+  const amountInCents = amount * 100;
+  const updatedDate = new Date().toISOString().split("T")[0];
+
+  try {
+    await sql`
+      UPDATE invoices 
+      SET customer_id = ${customerId}, amount = ${amountInCents}, status = ${status}, date = ${updatedDate}
+      WHERE id = ${id} 
+    `;
+
+    revalidatePath("/dashboard/invoices");
+    redirect("/dashboard/invoices");
+  } catch (error) {
+    return {
+      error: `Failed updating invoice with id: ${id}`,
+    };
+  }
 }
 
 export async function deleteInvoice(invoiceId: string) {
-  await sql`
-    DELETE FROM invoices WHERE id = ${invoiceId}
-  `;
-  revalidatePath("/dashboard/invoices");
+  try {
+    await sql`
+      DELETE FROM invoices WHERE id = ${invoiceId}
+    `;
+    revalidatePath("/dashboard/invoices");
+    return { message: "Invoice deleted!" };
+  } catch (error) {
+    return {
+      error: `Failed deleting invoice with id: ${invoiceId}`,
+    };
+  }
 }
