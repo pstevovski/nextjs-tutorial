@@ -6,6 +6,9 @@ import { Suspense } from "react";
 import { FontLusitana } from "@/app/ui/fonts";
 import { InvoicesTableSkeleton } from "@/app/ui/skeletons";
 import { fetchInvoicesPages } from "@/app/lib/data";
+import { Metadata } from "next";
+
+export const metadata: Metadata = { title: "Invoices" };
 
 export default async function Page({
   searchParams,
@@ -18,8 +21,6 @@ export default async function Page({
   const query = searchParams?.query || "";
   const currentPage = Number(searchParams?.page) || 1;
   const totalPages = await fetchInvoicesPages(query);
-
-  console.log("Search Params", { query });
 
   return (
     <div className="w-full">
